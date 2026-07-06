@@ -37,19 +37,15 @@ def main() -> int:
                 if args.tickers else
                 [t.upper() for t in cfg["universe"]["tickers"]])
 
-    # ---- discovery: automatically add volume/momentum candidates ----
+    # ---- discovery: universe refreshed from Yahoo's screener every run ----
     disc_rows = []
     dcfg = cfg.get("discovery", {})
     if dcfg.get("enabled") and not args.no_discovery:
-        base = discover.load_base_list(dcfg.get("base_list_file", "base_universe.txt"))
-        print(f"[discover] scanning {len(base)} base names ...")
-        disc_rows = discover.scan(base, top_n=int(dcfg.get("top_n", 15)),
-                                  min_dollar_volume=float(dcfg.get("min_dollar_volume", 5e6)),
-                                  exclude=set(universe))
+        disc_rows = discover.scan_universe(cfg, exclude=set(universe))
         for r in disc_rows:
             universe.append(r["ticker"])
         print(f"[discover] added {len(disc_rows)} candidates: "
-              f"{', '.join(r['ticker'] for r in disc_rows) or '-'}")
+              + (", ".join(f"{r['ticker']}({'/'.join(r['lists'])})" for r in disc_rows) or "-"))
 
     # ---- fetch + score ----
     results, cuts = [], []
@@ -60,6 +56,14 @@ def main() -> int:
         keep = (sc.fail_reason is None and sc.score >= scfg["min_score"])
         (results if keep else cuts).append((d, sc))
         time.sleep(0.7)                                     # be polite to Yahoo
+
+    # confirm A-stock tags against the fetched quarterlies (>= +50% rev YoY)
+    fetched = {d.ticker: d for d, _ in results + cuts}
+    for r in disc_rows:
+        d = fetched.get(r["ticker"])
+        yoy = [v for v in (d.q_rev_yoy if d else []) if v is not None]
+        if yoy and yoy[-1] >= 0.5 and "A" not in r["lists"]:
+            r["lists"].append("A")
 
     results.sort(key=lambda p: (-(p[1].score), -(p[1].target_vs_price or -9)))
     cuts.sort(key=lambda p: -(p[1].score))

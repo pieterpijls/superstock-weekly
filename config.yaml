@@ -11,11 +11,27 @@ universe:
 
 discovery:
   enabled: true
-  # Broad base list to scan for volume/momentum candidates (file with one ticker per line),
-  # e.g. export of S&P 600 / Russell 2000 / Finviz screener results.
+  # The pool is refreshed every run from Yahoo's stock screener (momentum +
+  # >50% revenue growth queries, capped at screen.max_market_cap); the base
+  # list file is only extra seeds on top (leave the file empty to skip).
   base_list_file: "base_universe.txt"
-  top_n: 15                        # number of candidates to add to the screen
   min_dollar_volume: 5_000_000     # ignore illiquid names (avg $ volume/day)
+  max_candidates: 20               # total added to the screen, interleaved per list
+  screener:
+    enabled: true
+    min_market_cap: 200_000_000   # floor keeps shells / micro-cap junk out
+    pool_size: 200                # names pulled per screener query
+  # The four lists a candidate can be tagged with:
+  leaders:                        # 1) market leaders: c > MA10 > MA20 > MA50, rising
+    min_adr_pct: 5                #    average daily range, %
+    min_dollar_volume: 10_000_000
+  a_stocks:                       # 2) A-stocks: quarterly revenue growth
+    min_rev_growth_pct: 50
+  darvas:                         # 3) Darvas: +100% off 52w low, near high, young
+    min_gain: 1.0
+    max_off_high: 0.15
+    max_ipo_years: 5
+  # 4) "Surge" (promising other names) uses min_dollar_volume above.
 
 # Manual judgment overrides for the two non-automatable criteria.
 # status: ok | mid | no

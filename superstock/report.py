@@ -51,6 +51,8 @@ font:13px/1.5 -apple-system,Segoe UI,sans-serif}
 .abstract{font:13px/1.6 -apple-system,Segoe UI,sans-serif;color:#3c3a33;margin:10px 0 2px}
 .chart{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;margin-top:6px}
 .chartcap{font:11px -apple-system,Segoe UI,sans-serif;color:var(--muted)}
+.badge{display:inline-block;font:600 10px/1 -apple-system,Segoe UI,sans-serif;letter-spacing:.05em;
+color:var(--navy);border:1px solid var(--gold);border-radius:99px;padding:3px 7px;white-space:nowrap}
 .blkl{font:600 11px/1 -apple-system,Segoe UI,sans-serif;letter-spacing:.14em;text-transform:uppercase;
 color:var(--gold);margin:16px 0 8px}
 table.tbl{width:100%;border-collapse:collapse;font:13px/1.5 -apple-system,Segoe UI,sans-serif;margin:8px 0 18px}
@@ -187,18 +189,23 @@ def render(results: list[tuple[TickerData, ScoreCard]],
         f"<td>{s.fail_reason or f'score {s.score_str}/16 below bar'}</td></tr>"
         for d, s in cuts) or "<tr><td colspan=3>&ndash;</td></tr>"
 
+    def _badges(r):
+        return " ".join(f"<span class='badge'>{l}</span>" for l in r.get("lists", []))
     disc_rows = "".join(
         f"<tr><td class='wt'>{r['ticker']}</td><td>{r.get('name','')}</td>"
+        f"<td>{_badges(r)}</td>"
         f"<td>{r['dollar_volume_surge']:.1f}&times;</td><td>{r['pct_off_high']*100:.0f}%</td>"
-        f"<td>{r['ret_6m']*100:+.0f}%</td></tr>"
+        f"<td>{f'{r0*100:+.0f}%' if (r0 := r.get('ret_6m')) is not None else '&ndash;'}</td></tr>"
         for r in discovery)
     disc_html = (f"""
-  <h2 class='sec'>Discovery &mdash; new candidates from the volume scan</h2>
-  <p class='lede' style='font-size:14px'>Names from your base universe with the biggest
-  <b>dollar-volume surge</b> (20-day vs 90-day average), still in an uptrend &mdash; the
-  \u201cvolume is the tell\u201d screen, automated. Candidates were scored this week automatically;
+  <h2 class='sec'>Discovery &mdash; this week's fresh candidates</h2>
+  <p class='lede' style='font-size:14px'>The pool is rebuilt every run from Yahoo's screener
+  (momentum and &gt;50% revenue-growth queries under the cap ceiling), then classified:
+  <b>Leader</b> = price &gt; MA10 &gt; MA20 &gt; MA50 and climbing &middot; <b>A</b> = quarterly sales
+  +50% or more &middot; <b>Darvas</b> = +100% off the 52w low on rising volume, near the high
+  &middot; <b>Surge</b> = dollar-volume surge in an uptrend. All were scored this week;
   add keepers to <code>universe.tickers</code>.</p>
-  <table class='tbl'><thead><tr><th>Ticker</th><th>Name</th><th>$Vol surge</th>
+  <table class='tbl'><thead><tr><th>Ticker</th><th>Name</th><th>Lists</th><th>$Vol surge</th>
   <th>Off 52w high</th><th>6m return</th></tr></thead><tbody>{disc_rows}</tbody></table>"""
                  if discovery else "")
 
