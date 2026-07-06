@@ -20,6 +20,8 @@ class TickerData:
     name: str = ""
     sector: str = ""
     industry: str = ""
+    summary: str = ""                          # longBusinessSummary
+    ohlc: Optional[pd.DataFrame] = None        # 2y daily OHLCV (for the report chart)
     price: Optional[float] = None
     market_cap: Optional[float] = None
     forward_eps: Optional[float] = None
@@ -66,6 +68,7 @@ def fetch(ticker: str) -> TickerData:
         d.name = info.get("shortName") or info.get("longName") or d.ticker
         d.sector = info.get("sector") or ""
         d.industry = info.get("industry") or ""
+        d.summary = info.get("longBusinessSummary") or ""
         d.price = info.get("currentPrice") or info.get("regularMarketPrice")
         d.market_cap = info.get("marketCap")
         d.forward_eps = info.get("forwardEps")
@@ -80,13 +83,16 @@ def fetch(ticker: str) -> TickerData:
         d.short_pct_float = info.get("shortPercentOfFloat")
 
         # ---- price history: liquidity, trend, 52w position ----
+        # 2y window: the extra year feeds the report chart; all screening
+        # stats below stay pinned to their original lookbacks.
         try:
-            hist = tk.history(period="1y", auto_adjust=True)
+            hist = tk.history(period="2y", auto_adjust=True)
             if len(hist) > 30:
+                d.ohlc = hist[["Open", "High", "Low", "Close", "Volume"]].copy()
                 close, vol = hist["Close"], hist["Volume"]
                 d.price = d.price or float(close.iloc[-1])
                 d.avg_dollar_volume = float((close * vol).tail(20).mean())
-                d.pct_off_52w_high = float(close.iloc[-1] / close.max() - 1.0)
+                d.pct_off_52w_high = float(close.iloc[-1] / close.tail(252).max() - 1.0)
                 d.above_200dma = bool(close.iloc[-1] > close.tail(200).mean())
                 if len(close) > 126:
                     d.ret_6m = float(close.iloc[-1] / close.iloc[-126] - 1.0)

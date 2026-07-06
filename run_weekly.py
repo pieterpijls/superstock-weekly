@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from superstock import data, scoring, report, emailer, discover
+from superstock import charts, data, scoring, report, emailer, discover
 
 OUT = Path("out"); OUT.mkdir(exist_ok=True)
 
@@ -64,16 +64,25 @@ def main() -> int:
     results.sort(key=lambda p: (-(p[1].score), -(p[1].target_vs_price or -9)))
     cuts.sort(key=lambda p: -(p[1].score))
 
+    # ---- charts (qualifiers only) ----
+    chart_pngs = {}
+    for d, _ in results:
+        png = charts.ohlc_png(d)
+        if png:
+            chart_pngs[d.ticker] = png
+    print(f"[charts] {len(chart_pngs)} OHLC charts rendered")
+
     # ---- render + save ----
-    html = report.render(results, cuts, disc_rows, cfg)
+    html = report.render(results, cuts, disc_rows, cfg, chart_pngs)
+    html_file = report.inline_images(html, chart_pngs)
     out_file = OUT / "superstock-weekly.html"
-    out_file.write_text(html, encoding="utf-8")
-    print(f"[report] {out_file} ({len(html):,} bytes) | "
+    out_file.write_text(html_file, encoding="utf-8")
+    print(f"[report] {out_file} ({len(html_file):,} bytes) | "
           f"{len(results)} qualifiers, {len(cuts)} cuts")
 
     # ---- email ----
     if not args.no_email:
-        emailer.send(html, cfg)
+        emailer.send(html, cfg, images=chart_pngs, attachment_html=html_file)
     return 0
 
 

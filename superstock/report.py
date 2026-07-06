@@ -2,7 +2,9 @@
 'research desk note' design system (navy / gold / warm paper, Georgia)."""
 from __future__ import annotations
 
+import base64
 import datetime as dt
+import html as htmlmod
 from typing import Optional
 
 from .data import TickerData
@@ -46,6 +48,9 @@ table.crit td{padding:5px 7px;border-bottom:1px solid var(--line)}
 .cval{color:var(--muted);text-align:right}
 .pt{background:#10203a08;border:1px dashed var(--gold);border-radius:8px;padding:10px 12px;margin-top:12px;
 font:13px/1.5 -apple-system,Segoe UI,sans-serif}
+.abstract{font:13px/1.6 -apple-system,Segoe UI,sans-serif;color:#3c3a33;margin:10px 0 2px}
+.chart{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;margin-top:6px}
+.chartcap{font:11px -apple-system,Segoe UI,sans-serif;color:var(--muted)}
 .blkl{font:600 11px/1 -apple-system,Segoe UI,sans-serif;letter-spacing:.14em;text-transform:uppercase;
 color:var(--gold);margin:16px 0 8px}
 table.tbl{width:100%;border-collapse:collapse;font:13px/1.5 -apple-system,Segoe UI,sans-serif;margin:8px 0 18px}
@@ -98,6 +103,31 @@ def _kpi_table(d: TickerData) -> str:
             f"</tr></thead><tbody>{body}</tbody></table></div>")
 
 
+def _abstract(d: TickerData, max_chars: int = 600) -> str:
+    """Company summary, trimmed to whole sentences within the budget."""
+    if not d.summary:
+        return ""
+    text = " ".join(d.summary.split())
+    if len(text) > max_chars:
+        cut = text[:max_chars]
+        dot = cut.rfind(". ")
+        text = (cut[:dot + 1] if dot > 200 else cut.rstrip() + "…")
+    return f"<p class='abstract'>{htmlmod.escape(text)}</p>"
+
+
+def _chart_block(d: TickerData) -> str:
+    """OHLC chart <img>; the actual PNG travels as cid: part or data URI."""
+    ret = ""
+    if d.ohlc is not None and len(d.ohlc) > 1:
+        c = d.ohlc["Close"]
+        ret = f" &middot; {(float(c.iloc[-1]/c.iloc[0])-1)*100:+.0f}% over the window"
+    return f"""
+  <div class='blkl'>Price &mdash; two years, weekly candles
+   <span class='chartcap'>hollow = up week, filled = down week{ret}</span></div>
+  <img class='chart' src='cid:chart_{d.ticker}' width='760'
+   alt='Two-year weekly OHLC candlestick chart for {d.ticker}'>"""
+
+
 def _crit_tables(sc: ScoreCard) -> str:
     def half(cs):
         rows = "".join(
@@ -110,7 +140,7 @@ def _crit_tables(sc: ScoreCard) -> str:
     return f"<div class='critwrap'>{half(cs[:8])}{half(cs[8:])}</div>"
 
 
-def _card(d: TickerData, sc: ScoreCard, mult: int) -> str:
+def _card(d: TickerData, sc: ScoreCard, mult: int, has_chart: bool = False) -> str:
     tvp = sc.target_vs_price
     col = "var(--up)" if (tvp or 0) >= 0 else "var(--down)"
     tvp_s = f"{tvp*100:+.0f}%" if tvp is not None else "n/a"
@@ -128,6 +158,8 @@ def _card(d: TickerData, sc: ScoreCard, mult: int) -> str:
   <div style='font:13px -apple-system,sans-serif;color:#6C6557'>
    Cap {_money(d.market_cap)} &middot; Price {_money(d.price)} &middot; Fwd P/E {f"{d.forward_pe:.0f}&times;" if d.forward_pe else "n/a"} &middot; $Vol/day {_money(d.avg_dollar_volume)}
   </div>
+  {_abstract(d)}
+  {_chart_block(d) if has_chart else ""}
   <div class='blkl'>Quarterly KPI evolution (as reported by Yahoo Finance)</div>
   {_kpi_table(d)}
   <div class='blkl'>The 16 criteria</div>
@@ -140,11 +172,15 @@ def _card(d: TickerData, sc: ScoreCard, mult: int) -> str:
 def render(results: list[tuple[TickerData, ScoreCard]],
            cuts: list[tuple[TickerData, ScoreCard]],
            discovery: list[dict],
-           cfg: dict) -> str:
+           cfg: dict,
+           charts: Optional[dict[str, bytes]] = None) -> str:
+    """HTML with cid:chart_<TICKER> image refs for tickers present in `charts`;
+    pass the result through inline_images() for a standalone (non-email) file."""
+    charts = charts or {}
     scfg = cfg["screen"]
     mult = scfg.get("target_multiple", 20)
     today = dt.date.today().strftime("%A, %d %B %Y")
-    qualifiers = "".join(_card(d, s, mult) for d, s in results)
+    qualifiers = "".join(_card(d, s, mult, d.ticker in charts) for d, s in results)
 
     cut_rows = "".join(
         f"<tr><td class='wt'>{d.ticker}</td><td>{d.name}</td>"
@@ -200,3 +236,13 @@ def render(results: list[tuple[TickerData, ScoreCard]],
  volatile and can be illiquid; you can lose money.</div>
  <div class='foot'>Superstock Weekly &middot; generated automatically &middot; Jesse Stine 16-criteria framework &middot; educational use only</div>
 </div></body></html>"""
+
+
+def inline_images(html: str, charts: dict[str, bytes]) -> str:
+    """Swap cid: refs for base64 data URIs -> self-contained HTML file.
+    (Email keeps cid: parts because Gmail blocks data-URI images.)"""
+    for ticker, png in charts.items():
+        html = html.replace(
+            f"cid:chart_{ticker}",
+            "data:image/png;base64," + base64.b64encode(png).decode("ascii"))
+    return html

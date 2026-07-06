@@ -12,7 +12,12 @@ import ssl
 from email.message import EmailMessage
 
 
-def send(html: str, cfg: dict, attachment_name: str = "superstock-weekly.html") -> None:
+def send(html: str, cfg: dict, attachment_name: str = "superstock-weekly.html",
+         images: dict[str, bytes] | None = None,
+         attachment_html: str | None = None) -> None:
+    """`html` may reference inline charts as cid:chart_<TICKER>; pass the PNGs in
+    `images` keyed by ticker. `attachment_html` (self-contained, data URIs) is
+    what gets attached as a file so it opens correctly outside the mail client."""
     ecfg = cfg["email"]
     if not ecfg.get("enabled", False):
         print("[email] disabled in config; skipping send")
@@ -31,8 +36,13 @@ def send(html: str, cfg: dict, attachment_name: str = "superstock-weekly.html") 
     msg.set_content("Your weekly Superstock screen is attached (HTML). "
                     "Open the attachment or view the HTML body.")
     msg.add_alternative(html, subtype="html")
-    msg.add_attachment(html.encode("utf-8"), maintype="text", subtype="html",
-                       filename=attachment_name)
+    if images:
+        html_part = msg.get_payload()[-1]  # the text/html alternative
+        for ticker, png in images.items():
+            html_part.add_related(png, maintype="image", subtype="png",
+                                  cid=f"<chart_{ticker}>")
+    msg.add_attachment((attachment_html or html).encode("utf-8"),
+                       maintype="text", subtype="html", filename=attachment_name)
 
     ctx = ssl.create_default_context()
     with smtplib.SMTP_SSL(ecfg.get("smtp_host", "smtp.gmail.com"),
