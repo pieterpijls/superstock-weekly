@@ -1,0 +1,24 @@
+# One ticker per line. Paste index constituents or a Finviz/TradingView export here.
+# Example seed (edit or replace entirely):
+COCO
+NXT
+CRDO
+MRX
+ECG
+INDV
+DAVE
+WLDN
+ROOT
+INOD
+CECO
+ATRO
+VIRT
+GEO
+LINC
+PDFS
+SEZL
+EVER
+GSHD
+ACMR
+XMTR
+PENG

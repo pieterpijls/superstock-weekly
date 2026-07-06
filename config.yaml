@@ -1,0 +1,37 @@
+# ================= Superstock Weekly Screener =================
+screen:
+  name: "Superstock Weekly"
+  max_market_cap: 10_000_000_000   # hard ceiling in USD (set null to disable)
+  min_score: 10                    # keep names scoring >= this (out of 16)
+  target_multiple: 20              # price target = forward EPS x this
+
+universe:
+  # Your watchlist (edit freely). Discovery candidates are added on top.
+  tickers: [MRX, DAVE, VIRT, GEO, SEZL, ECG, COCO, PDFS, LINC, INOD, CECO, ATRO, WLDN, ROOT, INDV]
+
+discovery:
+  enabled: true
+  # Broad base list to scan for volume/momentum candidates (file with one ticker per line),
+  # e.g. export of S&P 600 / Russell 2000 / Finviz screener results.
+  base_list_file: "base_universe.txt"
+  top_n: 15                        # number of candidates to add to the screen
+  min_dollar_volume: 5_000_000     # ignore illiquid names (avg $ volume/day)
+
+# Manual judgment overrides for the two non-automatable criteria.
+# status: ok | mid | no
+overrides:
+  MRX:  {catalyst: {status: ok,  note: "volatility + M&A engine"}, backlog: {status: mid, note: "raised dividend"}}
+  ECG:  {catalyst: {status: ok,  note: "data-center construction"}, backlog: {status: ok, note: "record $3.68B backlog"}}
+  CECO: {backlog: {status: ok, note: "first $1B+ backlog, B:B 2.2x"}}
+
+email:
+  enabled: true
+  smtp_host: smtp.gmail.com
+  smtp_port: 465
+  # Credentials are read from environment variables when null (recommended):
+  #   SUPERSTOCK_SMTP_USER, SUPERSTOCK_SMTP_PASS
+  username: null
+  password: null
+  from_addr: "pieter.pijls@gmail.com"
+  to_addrs: ["pieter.pijls@gmail.com"]
+  subject_prefix: "Superstock Weekly"
