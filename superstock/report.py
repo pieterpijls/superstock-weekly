@@ -53,6 +53,11 @@ font:13px/1.5 -apple-system,Segoe UI,sans-serif}
 .chartcap{font:11px -apple-system,Segoe UI,sans-serif;color:var(--muted)}
 .badge{display:inline-block;font:600 10px/1 -apple-system,Segoe UI,sans-serif;letter-spacing:.05em;
 color:var(--navy);border:1px solid var(--gold);border-radius:99px;padding:3px 7px;white-space:nowrap}
+.why{font:italic 14px/1.5 Georgia,serif;color:#5a5344;border-left:3px solid var(--gold);
+padding:2px 0 2px 10px;margin:0 0 10px}
+.chg{background:var(--paper2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
+font:13px/1.7 -apple-system,Segoe UI,sans-serif;margin:0 0 14px}
+.chg b{color:var(--navy)}
 .blkl{font:600 11px/1 -apple-system,Segoe UI,sans-serif;letter-spacing:.14em;text-transform:uppercase;
 color:var(--gold);margin:16px 0 8px}
 table.tbl{width:100%;border-collapse:collapse;font:13px/1.5 -apple-system,Segoe UI,sans-serif;margin:8px 0 18px}
@@ -139,10 +144,33 @@ def _crit_tables(sc: ScoreCard) -> str:
             for c in cs)
         return f"<table class='crit'><tbody>{rows}</tbody></table>"
     cs = sc.criteria
-    return f"<div class='critwrap'>{half(cs[:8])}{half(cs[8:])}</div>"
+    mid = (len(cs) + 1) // 2
+    return f"<div class='critwrap'>{half(cs[:mid])}{half(cs[mid:])}</div>"
 
 
-def _card(d: TickerData, sc: ScoreCard, mult: int, has_chart: bool = False) -> str:
+WHY_PRIORITY = ["Revenue growth", "EPS acceleration", "EPS growth", "Base (12w range)",
+                "Op. leverage", "Sentiment", "Float", "Short interest", "Debt / cash"]
+
+
+def _why(sc: ScoreCard) -> str:
+    """One-line 'why this ticker': its 3 strongest criteria, in plain words."""
+    best = [c for n in WHY_PRIORITY for c in sc.criteria if c.name == n and c.status == "ok"]
+    if not best:
+        return ""
+    parts = " &middot; ".join(f"{c.name}: <b>{c.detail}</b>" for c in best[:3])
+    return f"<div class='why'>{parts}</div>"
+
+
+def _cut_why(s: ScoreCard, ncrit: int) -> str:
+    if s.fail_reason:
+        return s.fail_reason
+    missing = [c.name for c in s.criteria if c.status == "no" and not c.manual]
+    return (f"score {s.score_str}/{ncrit} &mdash; missing: "
+            + (", ".join(missing[:4]) or "half-credits only"))
+
+
+def _card(d: TickerData, sc: ScoreCard, mult: int, has_chart: bool = False,
+          delta: Optional[float] = None) -> str:
     tvp = sc.target_vs_price
     col = "var(--up)" if (tvp or 0) >= 0 else "var(--down)"
     tvp_s = f"{tvp*100:+.0f}%" if tvp is not None else "n/a"
@@ -154,9 +182,10 @@ def _card(d: TickerData, sc: ScoreCard, mult: int, has_chart: bool = False) -> s
 <div class='card'>
  <div class='card-top'>
   <div><div class='tick'>{d.ticker}</div><div class='nm'>{d.name} &middot; {d.industry or d.sector}</div></div>
-  <div class='score'><b>{sc.score_str}</b>/16<small>&times;{mult}: <span style='color:{'#7fd7a8' if (tvp or 0)>=0 else '#f2a196'}'>{tvp_s}</span></small></div>
+  <div class='score'><b>{sc.score_str}</b>/{len(sc.criteria)}<small>&times;{mult}: <span style='color:{'#7fd7a8' if (tvp or 0)>=0 else '#f2a196'}'>{tvp_s}</span></small>{f"<small>{sc.score - delta:+g} wk/wk</small>" if delta is not None else ""}</div>
  </div>
  <div class='body'>
+  {_why(sc)}
   <div style='font:13px -apple-system,sans-serif;color:#6C6557'>
    Cap {_money(d.market_cap)} &middot; Price {_money(d.price)} &middot; Fwd P/E {f"{d.forward_pe:.0f}&times;" if d.forward_pe else "n/a"} &middot; $Vol/day {_money(d.avg_dollar_volume)}
   </div>
@@ -164,7 +193,7 @@ def _card(d: TickerData, sc: ScoreCard, mult: int, has_chart: bool = False) -> s
   {_chart_block(d) if has_chart else ""}
   <div class='blkl'>Quarterly KPI evolution (as reported by Yahoo Finance)</div>
   {_kpi_table(d)}
-  <div class='blkl'>The 16 criteria</div>
+  <div class='blkl'>The {len(sc.criteria)} criteria</div>
   {_crit_tables(sc)}
   <div class='pt'><b>&times;{mult} target</b> &nbsp; {tgt}</div>
  </div>
@@ -175,19 +204,34 @@ def render(results: list[tuple[TickerData, ScoreCard]],
            cuts: list[tuple[TickerData, ScoreCard]],
            discovery: list[dict],
            cfg: dict,
-           charts: Optional[dict[str, bytes]] = None) -> str:
+           charts: Optional[dict[str, bytes]] = None,
+           history: Optional[dict] = None) -> str:
     """HTML with cid:chart_<TICKER> image refs for tickers present in `charts`;
-    pass the result through inline_images() for a standalone (non-email) file."""
+    pass the result through inline_images() for a standalone (non-email) file.
+    `history`: {prev_date, deltas: {ticker: prev_score}, new_q, dropped_q, new_disc}."""
     charts = charts or {}
+    history = history or {}
+    deltas = history.get("deltas") or {}
     scfg = cfg["screen"]
     mult = scfg.get("target_multiple", 20)
+    ncrit = next((len(s.criteria) for _, s in results + cuts if s.criteria), 18)
     today = dt.date.today().strftime("%A, %d %B %Y")
-    qualifiers = "".join(_card(d, s, mult, d.ticker in charts) for d, s in results)
+    qualifiers = "".join(
+        _card(d, s, mult, d.ticker in charts, deltas.get(d.ticker)) for d, s in results)
+
+    def _lst(x):
+        return ", ".join(x) if x else "&ndash;"
+    chg_html = (f"""
+ <div class='chg'><b>Since {history.get('prev_date','last week')}:</b>
+  new qualifiers: {_lst(history.get('new_q'))} &middot;
+  dropped: {_lst(history.get('dropped_q'))} &middot;
+  new in discovery: {_lst(history.get('new_disc'))}</div>""" if history else "")
 
     cut_rows = "".join(
         f"<tr><td class='wt'>{d.ticker}</td><td>{d.name}</td>"
-        f"<td>{s.fail_reason or f'score {s.score_str}/16 below bar'}</td></tr>"
-        for d, s in cuts) or "<tr><td colspan=3>&ndash;</td></tr>"
+        f"<td>{s.score_str}{f' ({s.score - d0:+g})' if (d0 := deltas.get(d.ticker)) is not None else ''}</td>"
+        f"<td>{_cut_why(s, ncrit)}</td></tr>"
+        for d, s in cuts) or "<tr><td colspan=4>&ndash;</td></tr>"
 
     def _badges(r):
         return " ".join(f"<span class='badge'>{l}</span>" for l in r.get("lists", []))
@@ -220,9 +264,10 @@ def render(results: list[tuple[TickerData, ScoreCard]],
 <header class='masthead'>
  <div class='eyebrow'>The Small-Cap Desk &middot; Automated weekly screen</div>
  <div class='wordmark'>Superstock <span class='amp'>Weekly</span></div>
- <div class='meta'>{today} &middot; cap ceiling: {cap_txt} &middot; bar: {scfg['min_score']}+/16 &middot; target: fwd EPS &times;{mult}</div>
+ <div class='meta'>{today} &middot; cap ceiling: {cap_txt} &middot; bar: {scfg['min_score']}+/{ncrit} &middot; target: fwd EPS &times;{mult}</div>
 </header>
 <div class='wrap'>
+ {chg_html}
  <div class='gate'>
   <div class='g'><div class='n'>{len(results)+len(cuts)}</div><div class='l'>Screened</div></div>
   <div class='g'><div class='n'>{len(results)}</div><div class='l'>Qualify ({scfg['min_score']}+)</div></div>
@@ -232,8 +277,8 @@ def render(results: list[tuple[TickerData, ScoreCard]],
  <h2 class='sec'>Qualifiers</h2>
  <p class='lede' style='font-size:14px'>{manual_note}</p>
  {qualifiers or "<p>No names cleared the bar this week.</p>"}
- <h2 class='sec'>Cut this week &mdash; with reasons</h2>
- <table class='tbl'><thead><tr><th>Ticker</th><th>Name</th><th>Why</th></tr></thead>
+ <h2 class='sec'>Cut this week &mdash; near-misses first</h2>
+ <table class='tbl'><thead><tr><th>Ticker</th><th>Name</th><th>Score</th><th>Why</th></tr></thead>
  <tbody>{cut_rows}</tbody></table>
  {disc_html}
  <div class='disc'><b>Not investment advice.</b> Automated educational screen built on public

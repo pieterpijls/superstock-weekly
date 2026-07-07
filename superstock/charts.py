@@ -12,10 +12,25 @@ from typing import Optional
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import pandas as pd
+from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter
 
 from .data import TickerData
+
+MA_STYLE = {10: ("#BB872A", "10w"), 20: ("#3E5C87", "20w"), 50: ("#8F8878", "50w")}
+
+
+def _earnings_dates(ticker: str) -> list:
+    """Past earnings dates (best effort; empty on any failure)."""
+    try:
+        import yfinance as yf
+        ed = yf.Ticker(ticker).earnings_dates
+        now = pd.Timestamp.now(tz=ed.index.tz)
+        return [ts for ts in ed.index if ts <= now]
+    except Exception:
+        return []
 
 INK = "#16171D"
 MUTED = "#6C6557"
@@ -58,6 +73,33 @@ def ohlc_png(d: TickerData) -> Optional[bytes]:
             facecolor=PAPER if up else color, edgecolor=color, lw=0.9, zorder=3))
 
     n = len(w)
+    handles = []
+    # weekly moving averages, recessive, behind the candles
+    for span, (col, lbl) in MA_STYLE.items():
+        ma = w["Close"].rolling(span).mean()
+        if ma.notna().sum() > 2:
+            ax.plot(range(n), ma.values, color=col, lw=1.0, alpha=0.85, zorder=1)
+            handles.append(Line2D([], [], color=col, lw=1.2, label=lbl))
+
+    # 52-week high reference line
+    hi52 = float(d.ohlc["Close"].tail(252).max())
+    ax.axhline(hi52, color="#BB872A", lw=0.8, alpha=0.45, zorder=1)
+    handles.append(Line2D([], [], color="#BB872A", lw=0.8, alpha=0.6, label="52w high"))
+
+    # earnings dates as small markers along the bottom
+    edates = _earnings_dates(d.ticker)
+    lo_all = float(w["Low"].min())
+    ex = [min(max(w.index.searchsorted(ts), 0), n - 1) for ts in edates
+          if w.index[0] <= ts <= w.index[-1]]
+    if ex:
+        ax.plot(ex, [lo_all] * len(ex), "^", color=MUTED, ms=4, ls="none",
+                zorder=4, clip_on=False)
+        handles.append(Line2D([], [], color=MUTED, marker="^", ls="none",
+                              ms=4, label="earnings"))
+    ax.legend(handles=handles, loc="upper left", frameon=False, fontsize=7,
+              ncol=len(handles), labelcolor=MUTED, handlelength=1.4,
+              columnspacing=1.0, borderaxespad=0.2)
+
     # direct label on the endpoint: last weekly close
     last = float(w["Close"].iloc[-1])
     pad = max(3.0, n * 0.085)

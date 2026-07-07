@@ -1,0 +1,31 @@
+name: Superstock Mid-week Alerts
+
+on:
+  schedule:
+    # Mon-Fri 21:30 UTC = ~30 min after the US close; emails only on a trigger
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check for breakout triggers
+        env:
+          SUPERSTOCK_SMTP_USER: ${{ secrets.SUPERSTOCK_SMTP_USER }}
+          SUPERSTOCK_SMTP_PASS: ${{ secrets.SUPERSTOCK_SMTP_PASS }}
+        run: python run_alerts.py

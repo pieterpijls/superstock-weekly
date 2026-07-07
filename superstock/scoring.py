@@ -181,6 +181,21 @@ def score(d: TickerData, cfg: dict, overrides: dict | None = None) -> ScoreCard:
         ("mid" if dv is None else "no"),
         f"${dv/1e6:.0f}M/day" if dv else "unknown")
 
+    # 17. EPS acceleration (sequentially improving quarters, latest positive)
+    eq = [e for e in d.q_eps[-3:] if e is not None]
+    if len(eq) == 3:
+        acc = eq[0] < eq[1] < eq[2] and eq[2] > 0
+        add("EPS acceleration", "ok" if acc else "mid" if eq[1] < eq[2] else "no",
+            f"${eq[0]:.2f}→${eq[1]:.2f}→${eq[2]:.2f}")
+    else:
+        add("EPS acceleration", "mid", "insufficient data")
+
+    # 18. Base (tight 12-week consolidation range = launchpad, per Stine/Darvas)
+    br = d.base_range_12w
+    add("Base (12w range)", "ok" if br is not None and br <= .25 else
+        "mid" if br is not None and br <= .40 else ("mid" if br is None else "no"),
+        f"{br*100:.0f}% range" if br is not None else "unknown")
+
     sc.score = sum(POINTS[c.status] for c in sc.criteria)
 
     # x20 target

@@ -44,6 +44,26 @@ def send(html: str, cfg: dict, attachment_name: str = "superstock-weekly.html",
     msg.add_attachment((attachment_html or html).encode("utf-8"),
                        maintype="text", subtype="html", filename=attachment_name)
 
+    _smtp_send(msg, ecfg, user, pwd)
+
+
+def send_alert(subject: str, html: str, cfg: dict) -> None:
+    """Small mid-week alert mail: HTML body only, no attachments."""
+    ecfg = cfg["email"]
+    user = ecfg.get("username") or os.environ.get("SUPERSTOCK_SMTP_USER")
+    pwd = ecfg.get("password") or os.environ.get("SUPERSTOCK_SMTP_PASS")
+    if not user or not pwd:
+        raise SystemExit("[email] missing credentials for alert")
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = ecfg.get("from_addr") or user
+    msg["To"] = ", ".join(ecfg["to_addrs"])
+    msg.set_content("Superstock alert - open the HTML body.")
+    msg.add_alternative(html, subtype="html")
+    _smtp_send(msg, ecfg, user, pwd)
+
+
+def _smtp_send(msg: EmailMessage, ecfg: dict, user: str, pwd: str) -> None:
     ctx = ssl.create_default_context()
     with smtplib.SMTP_SSL(ecfg.get("smtp_host", "smtp.gmail.com"),
                           ecfg.get("smtp_port", 465), context=ctx) as s:

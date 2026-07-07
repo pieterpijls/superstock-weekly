@@ -38,6 +38,7 @@ class TickerData:
     pct_off_52w_high: Optional[float] = None   # negative = below high
     above_200dma: Optional[bool] = None
     ret_6m: Optional[float] = None
+    base_range_12w: Optional[float] = None     # (12w high / 12w low) - 1: tightness
     # Quarterly series, oldest -> newest (up to 6 quarters, may be shorter)
     q_labels: list = field(default_factory=list)
     q_revenue: list = field(default_factory=list)       # USD
@@ -96,6 +97,10 @@ def fetch(ticker: str) -> TickerData:
                 d.above_200dma = bool(close.iloc[-1] > close.tail(200).mean())
                 if len(close) > 126:
                     d.ret_6m = float(close.iloc[-1] / close.iloc[-126] - 1.0)
+                if len(hist) >= 60:
+                    lo12 = float(hist["Low"].tail(60).min())
+                    if lo12 > 0:
+                        d.base_range_12w = float(hist["High"].tail(60).max()) / lo12 - 1.0
         except Exception:
             pass
 

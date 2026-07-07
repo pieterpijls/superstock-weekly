@@ -2,7 +2,7 @@
 screen:
   name: "Superstock Weekly"
   max_market_cap: 10_000_000_000   # hard ceiling in USD (set null to disable)
-  min_score: 10                    # keep names scoring >= this (out of 16)
+  min_score: 11                    # keep names scoring >= this (out of 18 criteria now)
   target_multiple: 20              # price target = forward EPS x this
 
 universe:

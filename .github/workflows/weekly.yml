@@ -7,7 +7,7 @@ on:
   workflow_dispatch: {}        # manual "Run workflow" button for ad-hoc screens
 
 permissions:
-  contents: read
+  contents: write   # commits history.csv back for week-over-week deltas
 
 jobs:
   screen:
@@ -29,6 +29,13 @@ jobs:
           SUPERSTOCK_SMTP_USER: ${{ secrets.SUPERSTOCK_SMTP_USER }}
           SUPERSTOCK_SMTP_PASS: ${{ secrets.SUPERSTOCK_SMTP_PASS }}
         run: python run_weekly.py
+
+      - name: Persist score history (week-over-week deltas)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history.csv
+          git diff --cached --quiet || (git commit -m "history: $(date -u +%F)" && git push)
 
       - name: Upload report as artifact (backup copy, 90 days)
         if: always()

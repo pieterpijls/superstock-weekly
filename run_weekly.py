@@ -10,6 +10,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
+import datetime as dt
 import sys
 import time
 from pathlib import Path
@@ -19,6 +21,31 @@ import yaml
 from superstock import charts, data, scoring, report, emailer, discover
 
 OUT = Path("out"); OUT.mkdir(exist_ok=True)
+HIST = Path("history.csv")   # committed back by CI -> week-over-week deltas
+
+
+def load_prev_history() -> tuple[str, dict]:
+    """(prev_date, {ticker: row}) from the most recent run before today."""
+    if not HIST.exists():
+        return "", {}
+    rows = list(csv.DictReader(HIST.open()))
+    prior = sorted({r["date"] for r in rows if r["date"] < dt.date.today().isoformat()})
+    if not prior:
+        return "", {}
+    return prior[-1], {r["ticker"]: r for r in rows if r["date"] == prior[-1]}
+
+
+def append_history(results, cuts, disc_rows) -> None:
+    new = not HIST.exists()
+    tags = {r["ticker"]: "|".join(r["lists"]) for r in disc_rows}
+    with HIST.open("a", newline="") as f:
+        w = csv.writer(f)
+        if new:
+            w.writerow(["date", "ticker", "score", "qualified", "lists"])
+        today = dt.date.today().isoformat()
+        for pairs, q in ((results, 1), (cuts, 0)):
+            for d, s in pairs:
+                w.writerow([today, d.ticker, f"{s.score:g}", q, tags.get(d.ticker, "")])
 
 
 def main() -> int:
@@ -76,8 +103,23 @@ def main() -> int:
             chart_pngs[d.ticker] = png
     print(f"[charts] {len(chart_pngs)} OHLC charts rendered")
 
+    # ---- week-over-week history ----
+    prev_date, prev = load_prev_history()
+    hist_info = {}
+    if prev:
+        qnow = {d.ticker for d, _ in results}
+        hist_info = dict(
+            prev_date=prev_date,
+            deltas={t: float(r["score"]) for t, r in prev.items()},
+            new_q=sorted(t for t in qnow if prev.get(t, {}).get("qualified") != "1"),
+            dropped_q=sorted(t for t, r in prev.items()
+                             if r["qualified"] == "1" and t not in qnow),
+            new_disc=sorted(r["ticker"] for r in disc_rows if r["ticker"] not in prev))
+    if not args.tickers:                 # ad-hoc runs don't pollute the history
+        append_history(results, cuts, disc_rows)
+
     # ---- render + save ----
-    html = report.render(results, cuts, disc_rows, cfg, chart_pngs)
+    html = report.render(results, cuts, disc_rows, cfg, chart_pngs, hist_info)
     html_file = report.inline_images(html, chart_pngs)
     out_file = OUT / "superstock-weekly.html"
     out_file.write_text(html_file, encoding="utf-8")
