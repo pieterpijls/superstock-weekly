@@ -118,9 +118,7 @@ def fetch(ticker: str) -> TickerData:
                 ni = _row(q, ["Net Income", "NetIncome",
                               "Net Income Common Stockholders"])
                 for c in cols:
-                    d.q_labels.append(pd.Timestamp(c).strftime("Q%q'%y")
-                                      if hasattr(pd.Timestamp(c), "quarter")
-                                      else str(c))
+                    # (labels are built from pd.Timestamp.quarter after this loop)
                     r = float(rev[c]) if rev is not None and pd.notna(rev.get(c)) else None
                     d.q_revenue.append(r)
                     d.q_gross_margin.append(
