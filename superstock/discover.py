@@ -187,7 +187,8 @@ def scan_universe(cfg: dict, exclude: set[str] | None = None) -> list[dict]:
     ranked = {l: sorted([r for r in rows if l in r["lists"]], key=key.get(l, bycomp))
               for l in order}
     picks, seen = [], set()
-    limit = int(dcfg.get("max_candidates", 30))
+    # max_candidates null/0 = no cap: score everything that hit a list
+    limit = int(dcfg.get("max_candidates") or 0) or len(rows)
     while len(picks) < limit and any(ranked.values()):
         for l in order:
             if ranked[l] and len(picks) < limit:

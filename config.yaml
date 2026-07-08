@@ -16,7 +16,7 @@ discovery:
   # list file is only extra seeds on top (leave the file empty to skip).
   base_list_file: "base_universe.txt"
   min_dollar_volume: 5_000_000     # ignore illiquid names (avg $ volume/day)
-  max_candidates: 20               # total added to the screen, interleaved per list
+  max_candidates: 100              # cap on names added to the screen (null = all classified)
   screener:
     enabled: true
     min_market_cap: 200_000_000   # floor keeps shells / micro-cap junk out

@@ -200,6 +200,25 @@ def _card(d: TickerData, sc: ScoreCard, mult: int, has_chart: bool = False,
 </div>"""
 
 
+def _mini_card(d: TickerData, sc: ScoreCard, ncrit: int,
+               delta: Optional[float] = None) -> str:
+    """Compact near-miss card: 6-quarter KPI evolution + what's missing, no chart."""
+    missing = ", ".join(c.name for c in sc.criteria if c.status == "no" and not c.manual)
+    return f"""
+<div class='card'>
+ <div class='card-top'>
+  <div><div class='tick'>{d.ticker}</div><div class='nm'>{d.name} &middot; {d.industry or d.sector}</div></div>
+  <div class='score'><b>{sc.score_str}</b>/{ncrit}{f"<small>{sc.score - delta:+g} wk/wk</small>" if delta is not None else ""}</div>
+ </div>
+ <div class='body'>
+  {_why(sc)}
+  {_kpi_table(d)}
+  <div style='font:12px -apple-system,sans-serif;color:#B0392C;margin-top:8px'>
+   Missing: {missing or "nothing hard &mdash; half-credits only"}</div>
+ </div>
+</div>"""
+
+
 def render(results: list[tuple[TickerData, ScoreCard]],
            cuts: list[tuple[TickerData, ScoreCard]],
            discovery: list[dict],
@@ -226,6 +245,14 @@ def render(results: list[tuple[TickerData, ScoreCard]],
   new qualifiers: {_lst(history.get('new_q'))} &middot;
   dropped: {_lst(history.get('dropped_q'))} &middot;
   new in discovery: {_lst(history.get('new_disc'))}</div>""" if history else "")
+
+    near = [(d, s) for d, s in cuts
+            if not s.fail_reason and s.score >= scfg["min_score"] - 2][:12]
+    nm_html = ("<h2 class='sec'>Near-misses &mdash; fundamentals evolution</h2>"
+               "<p class='lede' style='font-size:14px'>Within 2 points of the bar; "
+               "the 6-quarter KPI trend plus the criteria still missing.</p>"
+               + "".join(_mini_card(d, s, ncrit, deltas.get(d.ticker)) for d, s in near)
+               if near else "")
 
     cut_rows = "".join(
         f"<tr><td class='wt'>{d.ticker}</td><td>{d.name}</td>"
@@ -277,6 +304,7 @@ def render(results: list[tuple[TickerData, ScoreCard]],
  <h2 class='sec'>Qualifiers</h2>
  <p class='lede' style='font-size:14px'>{manual_note}</p>
  {qualifiers or "<p>No names cleared the bar this week.</p>"}
+ {nm_html}
  <h2 class='sec'>Cut this week &mdash; near-misses first</h2>
  <table class='tbl'><thead><tr><th>Ticker</th><th>Name</th><th>Score</th><th>Why</th></tr></thead>
  <tbody>{cut_rows}</tbody></table>
