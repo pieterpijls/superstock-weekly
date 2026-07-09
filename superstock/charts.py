@@ -50,16 +50,20 @@ def ohlc_png(d: TickerData) -> Optional[bytes]:
     """Weekly candles over the full fetched history (~2y). None if too little data."""
     if d.ohlc is None or len(d.ohlc) < 30:
         return None
-    w = (d.ohlc[["Open", "High", "Low", "Close"]]
+    w = (d.ohlc
          .resample("W-FRI")
-         .agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"})
+         .agg({"Open": "first", "High": "max", "Low": "min", "Close": "last",
+               "Volume": "sum"})
          .dropna())
     if len(w) < 8:
         return None
 
-    fig, ax = plt.subplots(figsize=(7.6, 2.9), dpi=150)
+    fig, (ax, axv) = plt.subplots(
+        2, 1, figsize=(7.6, 3.7), dpi=150, sharex=True,
+        gridspec_kw={"height_ratios": [3.2, 1], "hspace": 0.08})
     fig.patch.set_facecolor(PAPER)
-    ax.set_facecolor(PAPER)
+    for a in (ax, axv):
+        a.set_facecolor(PAPER)
 
     span = float(w["High"].max() - w["Low"].min()) or 1.0
     for i, r in enumerate(w.itertuples()):
@@ -112,20 +116,29 @@ def ohlc_png(d: TickerData) -> Optional[bytes]:
     months = [(ts.year, ts.month) for ts in w.index]
     bounds = [i for i in range(1, n) if months[i] != months[i - 1]]
     ticks = bounds[::3] or bounds[:1]
-    ax.set_xticks(ticks)
-    ax.set_xticklabels([w.index[i].strftime("%b '%y") for i in ticks])
+    axv.set_xticks(ticks)
+    axv.set_xticklabels([w.index[i].strftime("%b '%y") for i in ticks])
+
+    # volume panel: weekly totals, colored by the week's direction
+    upmask = (w["Close"] >= w["Open"]).values
+    cols = [UP if u else DOWN for u in upmask]
+    axv.bar(range(n), w["Volume"].values, width=0.72, color=cols, alpha=0.55)
+    axv.yaxis.set_major_formatter(FuncFormatter(
+        lambda y, _p: f"{y/1e6:.0f}M" if y >= 1e6 else f"{y/1e3:.0f}K"))
+    axv.set_ylabel("Vol/wk", fontsize=7, color=MUTED)
 
     ax.yaxis.set_major_formatter(FuncFormatter(_dollar))
-    ax.yaxis.grid(True, color=GRID, lw=0.8)
-    ax.set_axisbelow(True)
-    ax.tick_params(colors=MUTED, labelsize=8, length=0)
-    for side in ("top", "right", "left"):
-        ax.spines[side].set_visible(False)
-    ax.spines["bottom"].set_color(GRID)
+    for a in (ax, axv):
+        a.yaxis.grid(True, color=GRID, lw=0.8)
+        a.set_axisbelow(True)
+        a.tick_params(colors=MUTED, labelsize=8, length=0)
+        for side in ("top", "right", "left"):
+            a.spines[side].set_visible(False)
+        a.spines["bottom"].set_color(GRID)
     ax.margins(y=0.06)
 
-    fig.tight_layout(pad=0.4)
     buf = BytesIO()
-    fig.savefig(buf, format="png", facecolor=PAPER)
+    fig.savefig(buf, format="png", facecolor=PAPER,
+                bbox_inches="tight", pad_inches=0.15)
     plt.close(fig)
     return buf.getvalue()

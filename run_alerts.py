@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import datetime as dt
 import sys
 from pathlib import Path
 
@@ -20,7 +19,7 @@ import pandas as pd
 import yaml
 import yfinance as yf
 
-from superstock import emailer
+from superstock import charts, data, emailer, report, scoring
 
 
 def watch_universe(cfg: dict) -> list[str]:
@@ -76,19 +75,29 @@ def main() -> int:
         return 0
     for h in hits:
         print(f"[alerts] {h['ticker']}: {h['kind']} - {h['note']}")
-    if args.dry_run:
-        return 0
 
-    rows = "".join(f"<tr><td style='padding:6px 10px;font-weight:700'>{h['ticker']}</td>"
-                   f"<td style='padding:6px 10px'>{h['kind']}</td>"
-                   f"<td style='padding:6px 10px'>{h['note']}</td></tr>" for h in hits)
-    html = (f"<html><body style='font:14px/1.6 -apple-system,Segoe UI,sans-serif'>"
-            f"<h3>Superstock mid-week triggers &mdash; {dt.date.today():%d %b %Y}</h3>"
-            f"<table style='border-collapse:collapse'>{rows}</table>"
-            f"<p style='color:#888;font-size:12px'>Breakout watch on watchlist + last "
-            f"qualifiers. Not investment advice; verify before acting.</p></body></html>")
-    tick_list = ", ".join(sorted({h["ticker"] for h in hits}))
-    emailer.send_alert(f"Superstock Alert — {tick_list}", html, cfg)
+    # full weekly-style analysis per triggered ticker: criteria, 6 quarters, chart
+    notes = {}
+    for h in hits:
+        notes[h["ticker"]] = (notes.get(h["ticker"], "") + " &middot; " if h["ticker"] in notes else "") \
+            + f"{h['kind']}: {h['note']}"
+    overrides = cfg.get("overrides") or {}
+    pairs, pngs = [], {}
+    for t in sorted(notes):
+        d = data.fetch(t)
+        pairs.append((d, scoring.score(d, cfg["screen"], overrides.get(t))))
+        png = charts.ohlc_png(d)
+        if png:
+            pngs[t] = png
+    html = report.render_alert(pairs, notes, cfg, pngs)
+    Path("out").mkdir(exist_ok=True)
+    Path("out/superstock-alert.html").write_text(
+        report.inline_images(html, pngs), encoding="utf-8")
+    if args.dry_run:
+        print("[alerts] dry run - wrote out/superstock-alert.html, not emailing")
+        return 0
+    tick_list = ", ".join(sorted(notes))
+    emailer.send_alert(f"Superstock Alert — {tick_list}", html, cfg, images=pngs)
     return 0
 
 

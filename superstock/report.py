@@ -318,6 +318,30 @@ def render(results: list[tuple[TickerData, ScoreCard]],
 </div></body></html>"""
 
 
+def render_alert(pairs: list[tuple[TickerData, ScoreCard]], notes: dict[str, str],
+                 cfg: dict, charts: dict[str, bytes]) -> str:
+    """Mid-week alert page: trigger note + full analysis card per ticker."""
+    mult = cfg["screen"].get("target_multiple", 20)
+    today = dt.date.today().strftime("%A, %d %B %Y")
+    body = "".join(
+        f"<div class='chg'><b>{d.ticker} &mdash; {notes.get(d.ticker, '')}</b></div>"
+        + _card(d, s, mult, d.ticker in charts)
+        for d, s in pairs)
+    return f"""<!doctype html><html><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Superstock Alert</title><style>{CSS}</style></head><body>
+<header class='masthead'>
+ <div class='eyebrow'>The Small-Cap Desk &middot; Mid-week breakout alert</div>
+ <div class='wordmark'>Superstock <span class='amp'>Alert</span></div>
+ <div class='meta'>{today}</div>
+</header>
+<div class='wrap'>
+ {body}
+ <div class='disc'><b>Not investment advice.</b> Automated breakout trigger on public
+ Yahoo Finance data; verify every figure before acting.</div>
+</div></body></html>"""
+
+
 def inline_images(html: str, charts: dict[str, bytes]) -> str:
     """Swap cid: refs for base64 data URIs -> self-contained HTML file.
     (Email keeps cid: parts because Gmail blocks data-URI images.)"""

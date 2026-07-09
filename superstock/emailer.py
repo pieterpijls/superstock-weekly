@@ -47,8 +47,9 @@ def send(html: str, cfg: dict, attachment_name: str = "superstock-weekly.html",
     _smtp_send(msg, ecfg, user, pwd)
 
 
-def send_alert(subject: str, html: str, cfg: dict) -> None:
-    """Small mid-week alert mail: HTML body only, no attachments."""
+def send_alert(subject: str, html: str, cfg: dict,
+               images: dict[str, bytes] | None = None) -> None:
+    """Mid-week alert mail; charts referenced as cid:chart_<TICKER> via `images`."""
     ecfg = cfg["email"]
     user = ecfg.get("username") or os.environ.get("SUPERSTOCK_SMTP_USER")
     pwd = ecfg.get("password") or os.environ.get("SUPERSTOCK_SMTP_PASS")
@@ -60,6 +61,11 @@ def send_alert(subject: str, html: str, cfg: dict) -> None:
     msg["To"] = ", ".join(ecfg["to_addrs"])
     msg.set_content("Superstock alert - open the HTML body.")
     msg.add_alternative(html, subtype="html")
+    if images:
+        html_part = msg.get_payload()[-1]
+        for ticker, png in images.items():
+            html_part.add_related(png, maintype="image", subtype="png",
+                                  cid=f"<chart_{ticker}>")
     _smtp_send(msg, ecfg, user, pwd)
 
 
