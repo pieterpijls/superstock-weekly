@@ -12,14 +12,37 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yaml
 import yfinance as yf
 
 from superstock import charts, data, emailer, report, scoring
+
+# The workflow fires two fixed-UTC cron slots (one per US DST regime) so one
+# of them always lands close to the 4pm ET close; this window picks the
+# right slot and drops the other, so only one email goes out per day.
+# The two cron slots are 60 min apart in UTC; keep this under 60 so only the
+# slot actually close to the ET close fires - never both on the same day.
+RUN_GRACE = dt.timedelta(minutes=50)
+# Hard send gate, independent of the above: never mail outside these Brussels
+# local hours, no matter what fired the job or when.
+QUIET_START, QUIET_END = dt.time(9, 0), dt.time(23, 0)
+
+
+def in_post_close_window() -> bool:
+    now_et = dt.datetime.now(ZoneInfo("America/New_York"))
+    close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    return dt.timedelta(0) <= (now_et - close) <= RUN_GRACE
+
+
+def in_quiet_hours() -> bool:
+    now = dt.datetime.now(ZoneInfo("Europe/Brussels")).time()
+    return not (QUIET_START <= now < QUIET_END)
 
 
 def watch_universe(cfg: dict) -> list[str]:
@@ -64,8 +87,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--dry-run", action="store_true", help="print, don't email")
+    ap.add_argument("--force", action="store_true",
+                    help="skip the post-close/quiet-hours gates (manual runs)")
     args = ap.parse_args()
     cfg = yaml.safe_load(Path(args.config).read_text())
+
+    if not args.dry_run and not args.force and not in_post_close_window():
+        print("[alerts] not this cron slot's turn (outside the post-close window) - skipping")
+        return 0
 
     tickers = watch_universe(cfg)
     print(f"[alerts] watching {len(tickers)}: {', '.join(tickers)}")
@@ -95,6 +124,9 @@ def main() -> int:
         report.inline_images(html, pngs), encoding="utf-8")
     if args.dry_run:
         print("[alerts] dry run - wrote out/superstock-alert.html, not emailing")
+        return 0
+    if not args.force and in_quiet_hours():
+        print("[alerts] quiet hours (23:00-09:00 Brussels) - suppressing send")
         return 0
     tick_list = ", ".join(sorted(notes))
     emailer.send_alert(f"Superstock Alert — {tick_list}", html, cfg, images=pngs)

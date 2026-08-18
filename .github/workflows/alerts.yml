@@ -2,9 +2,17 @@ name: Superstock Mid-week Alerts
 
 on:
   schedule:
-    # Mon-Fri 21:30 UTC = ~30 min after the US close; emails only on a trigger
-    - cron: "30 21 * * 1-5"
-  workflow_dispatch: {}
+    # Two fixed-UTC slots to straddle US DST (EDT/EST close at different UTC
+    # times); run_alerts.py's post-close window picks whichever one is
+    # actually ~market-close and skips the other, so exactly one runs.
+    - cron: "15 20 * * 1-5"   # ~market close during EDT (US summer)
+    - cron: "15 21 * * 1-5"   # ~market close during EST (US winter)
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Bypass the post-close/quiet-hours gates (manual test)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -28,4 +36,4 @@ jobs:
         env:
           SUPERSTOCK_SMTP_USER: ${{ secrets.SUPERSTOCK_SMTP_USER }}
           SUPERSTOCK_SMTP_PASS: ${{ secrets.SUPERSTOCK_SMTP_PASS }}
-        run: python run_alerts.py
+        run: python run_alerts.py ${{ inputs.force && '--force' || '' }}
